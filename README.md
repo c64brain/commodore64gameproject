@@ -7,3 +7,5 @@ These projects are meant to help you advance your understanding of the Commodore
 Many of the code segments are the result of projects such as "Bear Essentials", "Ghosts & Goblins, etc.
 
 Other screen subroutines can be found at codebase64.org.
+
+Learn more by visiting my YouTube channel (C64 Brain) at https://youtu.be/sqtyfO81f0c
