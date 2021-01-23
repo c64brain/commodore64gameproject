@@ -1,8 +1,14 @@
 ;===============================================================================
+; Commodore 64: "Your Game Project"
+;
+; File: Project 1
+;===============================================================================
+;===============================================================================
+
+;===============================================================================
 ; SCROLLING MAP EXAMPLE 1 - C64 YouTube Game Project
 ; 2016/17 - Peter 'Sig' Hewett aka RetroRomIcon (contributions)
 ; Additional coding by Steve Morrow
-
 ;===============================================================================
 Operator Calc        ; IMPORTANT - calculations are made BEFORE hi/lo bytes
                      ;             in precidence (for expressions and tables)
@@ -20,12 +26,15 @@ IncAsm "Game_Macros.asm"                    ; macro includes
 SCREEN_MEM   = $4000
 SCREEN1_MEM  = $4000                 ; Bank 1 - Screen 0 ; $4000
 SCREEN2_MEM  = $4400                 ; Bank 1 - Screen 1 ; $4400
-SCORE_SCREEN = $5800                 ; Bank 1 - Screen 6 ; $5800
 
 COLOR_MEM  = $D800                   ; Color mem never changes
 CHAR_MEM   = $4800                   ; Base of character set memory (set 1)
 
-LEVEL_1_MAP   = $E000                ;Address of level 1 tiles/charsets
+COLOR_DIFF = COLOR_MEM - SCREEN_MEM  ; difference between color and screen ram
+                                     ; a workaround for CBM PRG STUDIOs poor
+                                     ; expression handling
+
+LEVEL_1_MAP   = $E000                    ;Address of level 1 tiles/charsets
 LEVEL_1_CHARS = $E800
 #endregion
 
@@ -38,6 +47,9 @@ PARAM2 = $04                 ; when you can't use registers or other reasons
 PARAM3 = $05                            
 PARAM4 = $06                 ; essentially, think of these as extra data registers
 PARAM5 = $07
+
+TIMER = $08                  ; Timers - fast and slow, updated every frame
+SLOW_TIMER = $09
 
 ;---------------------------- $11 - $16 available
 
@@ -181,9 +193,14 @@ Screen_Setup
 
         lda #$40                        ; Use #$40 as the fill character on GameScreen
         jsr ClearScreen1                ; Clear both screens (double buffer)
-        jsr ClearScreen2 
+        jsr ClearScreen2
 
-;**************************** Map Position ************************************
+        lda #COLOR_BLUE                 ; Fill entire visible color ram with COLOR_BLUE
+        jsr ClearColorRam
+
+;===================================================================================================
+;  MAP POSITION
+;===================================================================================================
 
         ;-------------------------------------------------- CHARPAD LEVEL SETUP
         lda #1                          ; Start Level = 1
@@ -197,69 +214,93 @@ Screen_Setup
                                         ; And initialize it
 
         jsr CopyToBuffer                ; Copy to the backbuffer(Screen2)
-
-        ;-------------------------------------------------  DEBUG CONSOLE
-
-                                        ; Display the Debug Console Text
        
         ;-------------------------------------------------  RASTER SETUP
+        jsr WaitFrame
         jsr InitRasterIRQ               ; Setup raster interrupts
+        jsr WaitFrame
+
         
-        lda #%00011011                  ; Default (Y scroll = 3 by default)                                     ; 
+        lda #%00011011                  ; Default (Y scroll = 3 by default)    
+                                    ; 
         sta VIC_SCREEN_CONTROL
         lda #COLOR_BLACK
         sta VIC_BORDER_COLOR
 
-
-MapDisplay
-        jmp MapDisplay
-
 #endregion
+
+;===================================================================================================
+;  MAIN LOOP
+;===================================================================================================
+MainLoop
+        jmp MainLoop
 
 ;===============================================================================
 ; FILES IN GAME PROJECT
 ;===============================================================================
-        incAsm "Game_Routines.asm"                  ; core framework routines
         incAsm "Game_Interrupts.asm"
-        incAsm "Start_Level.asm
-        incAsm "Screen_Memory.asm"
+        incAsm "Game_Routines.asm"                  ; core framework routines
+        incAsm "Screen_Memory.asm"                ; screen drawing and handling
+        incAsm "Start_Level.asm"
+
+;---------------------------------------------------------------------------------------------------
+*=$4000
+;===============================================================================
+;                                                       VIC MEMORY BLOCK
+;                                                       CHARSET AND SPRITE DATA
+;===============================================================================
+; Charset and Sprite data directly loaded here.
+
+VIC_DATA_INCLUDES
+
+; VIC VIDEO MEMORY LAYOUT - BANK 1 ($4000 - $7FFF)
+; SCREEN_1      = $4000 - $43FF         (Screen 0)      ; Double buffered
+; SCREEN_2      = $4400 - $47FF         (Screen 1)      ; game screen
+; MAP_CHARS     = $4800 - $5FFF         (Charset 1)     ; game chars (tiles)
+; SCORE_CHARS   = $5000 - $57FF         (Charset 2)     ; Scoreboard chars
+; SCORE_SCREEN  = $5800 - $5BFF         (Screen 6)      ; Scoreboard Screen
+; SPRITES       = $5COO - $7FFF         (144 Sprite Images)
+
+;---------------------
+; CHARACTER SET SETUP
+;---------------------
+; Going with the 'Bear Essentials' model would be :
+;
+; 000 - 063    Normal font (letters / numbers / punctuation, sprite will pass over)
+; 064 - 127    Backgrounds (sprite will pass over)
+; 128 - 143    Collapsing platforms (deteriorate and eventually disappear when stood on)
+; 144 - 153    Conveyors (move the character left or right when stood on)
+; 154 - 191    Semi solid platforms (can be stood on, but can jump and walk through)
+; 192 - 239    Solid platforms (cannot pass through)
+; 240 - 255    Death (spikes etc)
+;
 
 *=$4800
 MAP_CHAR_MEM                            ; Character set for map screen
-;incbin"Turrican Map/Turrican_Chset1a.bin"
 incbin"Parkour_Maps/Parkour Redo Chset6.bin"
 
+;---------------------------------------------------------- SPRITE DATA
+*=$5C00
+
+; Reserve later for sprites
+
 ;===================================================================================================
-;                                                                                     LEVEL DATA
+;  LEVEL DATA
 ;===================================================================================================
 ; Each Level has a character set (2k) an attribute/color list (256 bytes) 64 4x4 tiles (1k)
 ; and a 64 x 32 (or 32 x 64) map (2k).
 
 ; The current level map will be put at $8000 with Attribute lists (256 bytes) and Tiles (1k)
 ; Starting after it at 8800
-
-; With additional levels to be stored at $9000 and $C000 and if new attributes and Tiles are needed
-; I'll find a place to put them
 ;
-; In order for the world to reset, the first map and chars will be backed up at $D000
-; under the VIC registers IO with bank switching at startup, and restored at game restart
-;
-; New levels are loaded into these spaces.
-;---------------------------------------------------------------------------------------------------
 *=$8000
 
 MAP_MEM
-;incbin"Turrican Map/Turrican_Map1a.bin"
-;incbin"Parkour_Maps/Parkour Redo Map4d.bin"
 incbin"Parkour_Maps/Parkour Redo Map6.bin"
 
 
 ATTRIBUTE_MEM
-;incbin"Parkour_Maps/Parkour Redo ChsetAttrib6.bin"
-;incbin"Parkour_Maps/Parkour Redo ChsetAttrib4d.bin"
 incbin"Parkour_Maps/Parkour Redo ChsetAttrib6.bin"
 
 TILE_MEM
-;incbin"Turrican Map/Turrican_Tileset1a.bin"
-;incbin"Parkour_Maps/Parkour Redo Tileset4d.bin"
 incbin"Parkour_Maps/Parkour Redo Tileset6.bin"
